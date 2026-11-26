@@ -21,6 +21,8 @@ export interface NetLink {
   vmaxMps: number;
   bearingDeg: number;
   name?: string;
+  /** OSM highway class, e.g. trunk, primary, secondary. */
+  highway?: string;
 }
 
 export interface SignalPlan {
