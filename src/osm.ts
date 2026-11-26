@@ -8,7 +8,12 @@ export type Bbox = [number, number, number, number];
 export const DEFAULT_BBOX: Bbox = [-4.39, 15.3, -4.29, 15.36];
 
 /** Public Overpass endpoint. Override with VITE_OVERPASS_URL if it is busy or blocked. */
-const OVERPASS_URL: string = import.meta.env?.VITE_OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
+/** Public Overpass servers, tried in order. Overpass servers can be busy or refuse browser requests. */
+const OVERPASS_URLS: string[] = [
+  import.meta.env?.VITE_OVERPASS_URL,
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+].filter((u): u is string => !!u);
 
 /** Lanes and default speed per road class, used when OSM tags are missing. ASSUMED defaults. */
 const CLASS: Record<string, { lanes: number; kmh: number }> = {
@@ -125,17 +130,27 @@ export function buildNetwork(elements: OsmElement[], b: Bbox): Network {
   };
 }
 
-/** Downloads the roads for a bounding box from the public Overpass API, directly from the browser. */
+/** Downloads the roads for a bounding box from the browser, trying each public Overpass server in turn. */
 export async function fetchNetworkFromOverpass(b: Bbox): Promise<Network> {
-  const res = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    body: new URLSearchParams({ data: overpassQuery(b) }),
-  });
-  if (!res.ok) {
-    throw new Error(`Overpass returned HTTP ${res.status}. Try a smaller area, or try again in a few minutes.`);
+  const errors: string[] = [];
+  for (const url of OVERPASS_URLS) {
+    try {
+      const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: overpassQuery(b) }) });
+      if (!res.ok) {
+        errors.push(`${new URL(url).host} returned HTTP ${res.status}`);
+        continue;
+      }
+      const json = (await res.json()) as { elements: OsmElement[] };
+      const network = buildNetwork(json.elements, b);
+      if (!network.links.length) throw new Error('No main roads found in this area. Check the coordinates.');
+      return network;
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('No main roads')) throw err;
+      errors.push(`${new URL(url).host} unreachable from this browser`);
+    }
   }
-  const json = (await res.json()) as { elements: OsmElement[] };
-  const network = buildNetwork(json.elements, b);
-  if (!network.links.length) throw new Error('No main roads found in this area. Check the coordinates.');
-  return network;
+  throw new Error(
+    `${errors.join('; ')}. Public OpenStreetMap servers may be busy or block browser requests. ` +
+      'Try again later, or use a prebuilt road file (see README).',
+  );
 }
