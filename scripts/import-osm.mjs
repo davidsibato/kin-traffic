@@ -41,7 +41,7 @@ const [s, w, n, e] = bbox;
 
 const query = `[out:json][timeout:120];
 (
-  way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential)$"](${s},${w},${n},${e});
+  way["highway"~"^(trunk|primary|secondary)$"](${s},${w},${n},${e});
   node["highway"="traffic_signals"](${s},${w},${n},${e});
 );
 (._;>;);
@@ -110,6 +110,7 @@ for (const way of json.elements.filter((x) => x.type === 'way')) {
           vmaxMps: Math.round((kmh / 3.6) * 100) / 100,
           bearingDeg: Math.round(bearing(fn, tn) * 10) / 10,
           name: tags.name ?? '',
+          highway: tags.highway,
         });
         hasOut.add(f);
         undirectedDeg.set(f, (undirectedDeg.get(f) ?? new Set()).add(t));

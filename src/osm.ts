@@ -15,12 +15,11 @@ const OVERPASS_URLS: string[] = [
   'https://overpass.kumi.systems/api/interpreter',
 ].filter((u): u is string => !!u);
 
-/** Lanes and default speed per road class, used when OSM tags are missing. ASSUMED defaults. */
+/** Lanes and default speed per principal road class, used when OSM tags are missing. ASSUMED defaults. */
 const CLASS: Record<string, { lanes: number; kmh: number }> = {
   trunk: { lanes: 2, kmh: 50 },
   primary: { lanes: 2, kmh: 50 },
   secondary: { lanes: 1, kmh: 40 },
-  tertiary: { lanes: 1, kmh: 40 },
 };
 
 interface OsmElement {
@@ -34,10 +33,10 @@ interface OsmElement {
 
 export function overpassQuery(b: Bbox): string {
   const [s, w, n, e] = b;
-  // Main roads only for the first version: keeps the download small enough for a browser.
+  // Principal roads only: trunk, primary and secondary. Streets are excluded to keep the network readable.
   return `[out:json][timeout:90];
 (
-  way["highway"~"^(trunk|primary|secondary|tertiary)$"](${s},${w},${n},${e});
+  way["highway"~"^(trunk|primary|secondary)$"](${s},${w},${n},${e});
   node["highway"="traffic_signals"](${s},${w},${n},${e});
 );
 (._;>;);
@@ -65,7 +64,7 @@ export function buildNetwork(elements: OsmElement[], b: Bbox): Network {
   for (const way of elements) {
     if (way.type !== 'way' || !way.nodes) continue;
     const tags = way.tags ?? {};
-    const cls = CLASS[tags.highway ?? ''] ?? CLASS.tertiary;
+    const cls = CLASS[tags.highway ?? ''] ?? CLASS.secondary;
     const lanes = Number.parseInt(tags.lanes ?? '', 10) || cls.lanes;
     const kmh = /^\d+$/.test(tags.maxspeed ?? '') ? Number(tags.maxspeed) : cls.kmh; // ignore "mph" strings
     const oneway = tags.oneway === 'yes' || tags.oneway === '1';
@@ -101,6 +100,7 @@ export function buildNetwork(elements: OsmElement[], b: Bbox): Network {
           vmaxMps: Math.round((kmh / 3.6) * 100) / 100,
           bearingDeg: Math.round(bearingDeg({ lat: from.lat!, lng: from.lon! }, { lat: to.lat!, lng: to.lon! }) * 10) / 10,
           name: tags.name ?? '',
+          highway: tags.highway,
         });
         addNeighbour(f, t);
         addNeighbour(t, f);
